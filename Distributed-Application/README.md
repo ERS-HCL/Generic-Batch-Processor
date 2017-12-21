@@ -3,7 +3,7 @@ The goal of this sample is to show you how to use Akka.Cluster to form resilient
 
 ## Workflow
 
-! [Image of Workflow](/Distributed-Application/Workflow.PNG)
+![Image of Workflow](/Distributed-Application/Workflow.PNG)
 
 ## Sample Overview
 
