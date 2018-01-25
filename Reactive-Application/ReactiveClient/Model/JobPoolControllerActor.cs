@@ -37,12 +37,12 @@ namespace ReactiveClient
         /// <summary>
         /// schedule intial delay for processing unfinished tasks
         /// </summary>
-        int _initialDelay = 2;
+        int _initialDelayInMinutes = 2;
 
         /// <summary>
         /// schedule interval for processing unfinished tasks
         /// </summary>
-        int _interval = 10;
+        int _intervalInMinutes = 1;
 
         /// <summary>
         /// Job manager view model instance
@@ -106,7 +106,7 @@ namespace ReactiveClient
             }
 
             // schedule jobs
-            Context.System.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(10), () =>
+            Context.System.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), () =>
             {
                 if (_jobsToProcessed.Count > 0)
                 {
@@ -121,8 +121,8 @@ namespace ReactiveClient
 
             // create scheduler for uprocessed jobs
             _jobScheduler = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
-                             TimeSpan.FromMinutes(_initialDelay), //initial delay in minutes
-                             TimeSpan.FromSeconds(_interval),// interval
+                             TimeSpan.FromMinutes(_initialDelayInMinutes), //initial delay in minutes
+                             TimeSpan.FromMinutes(_intervalInMinutes),// interval
                              Self,
                              new ProcessUnfinishedJobs(),
                              Self);
@@ -171,37 +171,38 @@ namespace ReactiveClient
         }
 
         private void ExtractSchedularSettings()
+        {            
+            int returnValue = GetSettingValue(ConfigurationManager.AppSettings["IntervalInMinutes"]);
+            if (returnValue > 0)
+            {
+                _intervalInMinutes = returnValue;
+            }
+
+            returnValue = GetSettingValue(ConfigurationManager.AppSettings["TimeOutInMinutes"]);
+            if (returnValue > 0)
+            {
+                _taskTimeout  = returnValue;
+            }
+
+            returnValue = GetSettingValue(ConfigurationManager.AppSettings["InitialDelayInMinutes"]);
+            if (returnValue > 0)
+            {
+                _initialDelayInMinutes = returnValue;
+            }
+        }
+
+        private int GetSettingValue(string intervalStr)
         {
-            string timeOutStr = ConfigurationManager.AppSettings["TimeOutInMinutes"];
-            string initialDelayStr = ConfigurationManager.AppSettings["InitialDelayInMinutes"];
-            string intervalStr = ConfigurationManager.AppSettings["IntervalInSeconds"];
-
-            if (!string.IsNullOrEmpty(timeOutStr))
-            {
-                int outValue = 0;
-                if (int.TryParse(timeOutStr, out outValue))
-                {
-                    _taskTimeout = outValue;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(initialDelayStr))
-            {
-                int outValue = 0;
-                if (int.TryParse(initialDelayStr, out outValue))
-                {
-                    _initialDelay = outValue;
-                }
-            }
-
+            int returnValue = 0;
             if (!string.IsNullOrEmpty(intervalStr))
             {
                 int outValue = 0;
                 if (int.TryParse(intervalStr, out outValue))
                 {
-                    _interval = outValue;
+                    returnValue = outValue;
                 }
             }
+            return returnValue;
         }
 
         #region Lifecycle Event Hooks

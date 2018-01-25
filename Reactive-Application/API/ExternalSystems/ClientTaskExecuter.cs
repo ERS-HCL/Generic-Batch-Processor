@@ -18,8 +18,8 @@ namespace API.ExternalSystems
             outputPath = ConvertToURIPath(outputPath);
             exePath = ConvertToURIPath(exePath);
 
-            string extractor1 = outputPath + @"/" + "Extractor1.txt";
-            string extractor2 = outputPath + @"/" + taskMessage.Description;
+            string extractor1 = outputPath + @"/" + "Extractor1.txt"; // static parameter
+            string extractor2 = outputPath + @"/" + taskMessage.Description;// dynamic parameter coming from jobpool.txt
 
             return await Task.Delay(100)
                .ContinueWith<AcknowledgementMessage>(task =>
