@@ -18,6 +18,7 @@ namespace ReactiveClient
         DateTime _endTime;
         string _duration;
         int _noOfAttempt;
+        int _timeOut;
 
         public int TaskID
         {
@@ -94,10 +95,17 @@ namespace ReactiveClient
             }
 
         }
-        public TaskItem(int taskId, string taskDescription)
+
+        public int TimeOut
+        {
+            get { return _timeOut; }
+            set { _timeOut = value; }
+        }
+        public TaskItem(int taskId, string taskDescription, int timeOut)
         {
             TaskID = taskId;
             Description = taskDescription;
+            TimeOut = timeOut;
             Status = JobStatus.NotStarted.ToString();
         }
 

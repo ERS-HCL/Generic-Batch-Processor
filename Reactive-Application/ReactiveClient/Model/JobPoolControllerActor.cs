@@ -2,15 +2,10 @@
 using Akka.Routing;
 using API;
 using API.Messages;
-using ReactiveClient;
+using ReactiveClient.Util;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Configuration;
-using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ReactiveClient
 {
@@ -28,12 +23,7 @@ namespace ReactiveClient
         /// api actor instance
         /// </summary>
         private IActorRef _api;      
-
-        /// <summary>
-        /// timeout of task in minutes
-        /// </summary>
-        int _taskTimeout = 5;
-
+        
         /// <summary>
         /// schedule intial delay for processing unfinished tasks
         /// </summary>
@@ -42,7 +32,12 @@ namespace ReactiveClient
         /// <summary>
         /// schedule interval for processing unfinished tasks
         /// </summary>
-        int _intervalInMinutes = 1;
+        int _intervalInSeconds = 60;
+
+        /// <summary>
+        /// max no. of attempts for the task
+        /// </summary>
+        int _maxNoOfAttempts = 3;
 
         /// <summary>
         /// Job manager view model instance
@@ -55,8 +50,10 @@ namespace ReactiveClient
             _api = api;
             this.jobManagerViewModel = mainVm;
 
-            ExtractSchedularSettings();
-
+            this._initialDelayInMinutes = Utility.GetSettingValue("InitialDelayInMinutes");
+            this._intervalInSeconds =  Utility.GetSettingValue("IntervalInSeconds");
+            this._maxNoOfAttempts = Utility.GetSettingValue("MaxNoOfAttempts");
+            
             Receive<ScheduleJobMessage>(msg => HandleScheduleAllJobs());
             Receive<ProcessUnfinishedJobs>(msg => HandleProcessUnFinishedJobs());
 
@@ -67,7 +64,7 @@ namespace ReactiveClient
                     TaskItem taskItem = this.jobManagerViewModel.Tasks.Where(x => x.TaskID == job.ID).FirstOrDefault();
                     if (taskItem.Status == JobStatus.NotStarted.ToString())
                     {
-                        _jobsToProcessed.Add(job.ID, new ProcessJobMessage(job.Description, job.ID, Self));
+                        _jobsToProcessed.Add(job.ID, new ProcessJobMessage(job.Description, job.ID, taskItem.TimeOut, Self));
                     }
                 }
             });
@@ -79,6 +76,8 @@ namespace ReactiveClient
                 taskItem.StartTime = job.ProcessedTime;
                 taskItem.Status = JobStatus.Started.ToString();
                 taskItem.NoOfAttempts++;
+                if (_jobsToProcessed.ContainsKey(job.ID))
+                    _jobsToProcessed.Remove(taskItem.TaskID);
             });
 
             Receive<JobCompletedMessage>(job =>
@@ -101,12 +100,12 @@ namespace ReactiveClient
             _jobsToProcessed.Clear();
             foreach (var taskItem in this.jobManagerViewModel.Tasks)
             {
-                var job = new ProcessJobMessage(taskItem.Description, taskItem.TaskID, Self);
+                var job = new ProcessJobMessage(taskItem.Description, taskItem.TaskID, taskItem.TimeOut, Self);
                 _jobsToProcessed.Add(taskItem.TaskID, job);                
             }
 
             // schedule jobs
-            Context.System.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), () =>
+            Context.System.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(10), () =>
             {
                 if (_jobsToProcessed.Count > 0)
                 {
@@ -114,7 +113,7 @@ namespace ReactiveClient
                     {
                         var currentJobMsg = _jobsToProcessed.Values.ElementAt(0);
                         _api.Tell(currentJobMsg);
-                        _jobsToProcessed.Remove(currentJobMsg.ID);
+                      //  _jobsToProcessed.Remove(currentJobMsg.ID);
                     }
                 }
             });
@@ -122,13 +121,70 @@ namespace ReactiveClient
             // create scheduler for uprocessed jobs
             _jobScheduler = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
                              TimeSpan.FromMinutes(_initialDelayInMinutes), //initial delay in minutes
-                             TimeSpan.FromMinutes(_intervalInMinutes),// interval
+                             TimeSpan.FromSeconds(_intervalInSeconds),// interval
                              Self,
                              new ProcessUnfinishedJobs(),
                              Self);
         }
 
-      
+
+        //private void HandleProcessUnFinishedJobs()
+        //{
+        // //   if (_jobsToProcessed.Count() == 0)
+        //    {
+        //        var count = this.jobManagerViewModel.Tasks.Where(x => x.Status == JobStatus.Completed.ToString()).Count();
+        //        if (count == this.jobManagerViewModel.Tasks.Count())
+        //        {
+        //            _jobScheduler.Cancel();
+        //            this.jobManagerViewModel.StopTimer();
+        //            this.jobManagerViewModel.IsCompleted = true;
+        //        }
+        //        else
+        //        {
+        //            if (_jobsToProcessed.Count() == 0)
+        //            {
+        //                // not started tasks
+        //                List<TaskItem> unProcessedTasks = this.jobManagerViewModel.Tasks.Where(x => x.Status == JobStatus.NotStarted.ToString()).ToList();
+        //                foreach (var task in unProcessedTasks)
+        //                {
+        //                    if (!_jobsToProcessed.ContainsKey(task.TaskID))
+        //                        _jobsToProcessed.Add(task.TaskID, new ProcessJobMessage(task.Description, task.TaskID, Self));
+        //                }
+        //            }
+
+        //            // timeout taks
+        //            List<TaskItem> timeoutTasks = this.jobManagerViewModel.Tasks.Where(x => (x.Status == JobStatus.Started.ToString()
+        //                                         && DateTime.Now.Subtract(x.StartTime).TotalMinutes > x.TimeOut)).ToList();
+
+        //            if (timeoutTasks.Count() > 0)
+        //            {
+        //                foreach (var task in timeoutTasks)
+        //                {
+        //                    if(task.NoOfAttempts >= _maxNoOfAttempts)
+        //                    {
+        //                        task.Status = JobStatus.Timeout.ToString();
+        //                        continue;
+        //                    }
+
+        //                    if (!_jobsToProcessed.ContainsKey(task.TaskID))
+        //                        _jobsToProcessed.Add(task.TaskID, new ProcessJobMessage(task.Description, task.TaskID, Self));
+        //                }
+        //            }
+        //            else
+        //            {
+        //                List<TaskItem> unFinishedtasks = this.jobManagerViewModel.Tasks.Where(x => x.Status == JobStatus.Started.ToString()
+        //                        && DateTime.Now.Subtract(x.StartTime).TotalMinutes < x.TimeOut).ToList();
+        //                if (unFinishedtasks.Count() == 0)
+        //                {
+        //                    _jobScheduler.Cancel();
+        //                    this.jobManagerViewModel.StopTimer();
+        //                    this.jobManagerViewModel.IsCompleted = true;
+        //                }
+        //            }
+        //        }
+        //    }
+        //}
+
         private void HandleProcessUnFinishedJobs()
         {
             if (_jobsToProcessed.Count() == 0)
@@ -141,24 +197,35 @@ namespace ReactiveClient
                     this.jobManagerViewModel.IsCompleted = true;
                 }
                 else
-                {
-                    List<TaskItem> failedtasks = this.jobManagerViewModel.Tasks.Where(x => x.Status == JobStatus.Cancelled.ToString()
-                         || x.Status == JobStatus.Timeout.ToString() || x.Status == JobStatus.NotStarted.ToString()
-                         || (x.Status == JobStatus.Started.ToString() && DateTime.Now.Subtract(x.StartTime).TotalMinutes > _taskTimeout)
-                         ).ToList();
+                {                    
+                    List<TaskItem> failedTasks = this.jobManagerViewModel.Tasks.Where( x => x.Status == JobStatus.Timeout.ToString()
+                     ||(x.Status == JobStatus.Started.ToString() && DateTime.Now.Subtract(x.StartTime).TotalMinutes > x.TimeOut)).ToList();
 
-                    if (failedtasks.Count() > 0)
+                    if (failedTasks.Count() > 0)
                     {
-                        foreach (var task in failedtasks)
+                        foreach (var task in failedTasks)
                         {
+                            if (task.NoOfAttempts >= _maxNoOfAttempts)
+                            {
+                                task.Status = JobStatus.Cancelled.ToString();
+                                continue;
+                            }
+
                             if (!_jobsToProcessed.ContainsKey(task.TaskID))
-                                _jobsToProcessed.Add(task.TaskID, new ProcessJobMessage(task.Description, task.TaskID, Self));
+                            {
+                                if (task.Status == JobStatus.Timeout.ToString() || 
+                                   (task.Status == JobStatus.Started.ToString() && task.NoOfAttempts ==1 )) // somtimes even if the task completed successfuly by worker, the acknowledge message is not delivered to api. This condition will handle this problem.
+                                {
+                                    task.TimeOut += (int)Math.Ceiling(task.TimeOut * 0.5);
+                                    _jobsToProcessed.Add(task.TaskID, new ProcessJobMessage(task.Description, task.TaskID, task.TimeOut, Self));
+                                }
+                            }
                         }
-                    }
+                    }                    
                     else
                     {
                         List<TaskItem> unFinishedtasks = this.jobManagerViewModel.Tasks.Where(x => x.Status == JobStatus.Started.ToString()
-                                && DateTime.Now.Subtract(x.StartTime).TotalMinutes < _taskTimeout).ToList();
+                                && DateTime.Now.Subtract(x.StartTime).TotalMinutes < x.TimeOut).ToList();
                         if (unFinishedtasks.Count() == 0)
                         {
                             _jobScheduler.Cancel();
@@ -168,41 +235,6 @@ namespace ReactiveClient
                     }
                 }
             }
-        }
-
-        private void ExtractSchedularSettings()
-        {            
-            int returnValue = GetSettingValue(ConfigurationManager.AppSettings["IntervalInMinutes"]);
-            if (returnValue > 0)
-            {
-                _intervalInMinutes = returnValue;
-            }
-
-            returnValue = GetSettingValue(ConfigurationManager.AppSettings["TimeOutInMinutes"]);
-            if (returnValue > 0)
-            {
-                _taskTimeout  = returnValue;
-            }
-
-            returnValue = GetSettingValue(ConfigurationManager.AppSettings["InitialDelayInMinutes"]);
-            if (returnValue > 0)
-            {
-                _initialDelayInMinutes = returnValue;
-            }
-        }
-
-        private int GetSettingValue(string intervalStr)
-        {
-            int returnValue = 0;
-            if (!string.IsNullOrEmpty(intervalStr))
-            {
-                int outValue = 0;
-                if (int.TryParse(intervalStr, out outValue))
-                {
-                    returnValue = outValue;
-                }
-            }
-            return returnValue;
         }
 
         #region Lifecycle Event Hooks

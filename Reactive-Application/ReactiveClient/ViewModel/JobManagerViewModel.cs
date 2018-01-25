@@ -1,11 +1,13 @@
 ﻿using Akka.Actor;
 using Akka.Routing;
 using Microsoft.Practices.Prism.Commands;
+using ReactiveClient.Util;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -195,20 +197,35 @@ namespace ReactiveClient
                 return;
             }
             lstTasks.Clear();
+
+            if(!CheckSchedulerSettingPresent())
+            {
+                MessageBox.Show("Please check scheduler settings in config file.");
+                return;
+            }
+
+            _stopWatch.Reset();
+            StopTimer();
+
+            int timeOut = Utility.GetSettingValue("TimeOutInMinutes");
             var fileLines = File.ReadAllLines(fileName);
             int jobId = 0;
             foreach (var line in fileLines)
             {
-                jobId++;
-                lstTasks.Add(new TaskItem(jobId, line));
+                string taskStr = line.Trim();
+                if (!string.IsNullOrEmpty(taskStr))
+                {
+                    jobId++;
+                    lstTasks.Add(new TaskItem(jobId, taskStr, timeOut));
+                }
             }
             EnableProcessTaskButton = true;
         }
-
+                
         private void ExecuteProcessTasksCommand()
         {
             if (this._jobPoolManagerActor != null)
-            {
+            {                
                 this._jobPoolManagerActor.Tell(new ScheduleJobMessage());
                 EnableGetTaskButton = false;
                 EnableProcessTaskButton = false;
@@ -221,6 +238,13 @@ namespace ReactiveClient
         {
             _stopWatch.Stop();
             _dispatcherTimer.Stop();
+        }
+
+        private bool CheckSchedulerSettingPresent()
+        {
+            IList<string> settings = new List<string>() { "TimeOutInMinutes", "MaxNoOfAttempts", "InitialDelayInMinutes", "IntervalInSeconds" };
+            var count = settings.Where(x => Utility.GetSettingValue(x.ToString()) == 0).Count();
+            return count == 0;
         }
     }
 }

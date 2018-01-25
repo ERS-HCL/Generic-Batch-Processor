@@ -143,6 +143,9 @@ namespace ReactiveClient
             var statusValues = Enum.GetValues(typeof(JobStatus));
             foreach (JobStatus status in statusValues)
             {
+                if (status == JobStatus.NotStarted || status == JobStatus.Started || status == JobStatus.Timeout)
+                    continue;
+
                 TaskStatusView taskData = new TaskStatusView();
                 taskData.TaskStatus = status.ToString();
                 taskData.TotalJobs = this.jobManagerVM.Tasks.Count();

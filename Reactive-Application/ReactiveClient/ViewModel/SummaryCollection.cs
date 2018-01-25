@@ -16,9 +16,9 @@ namespace ReactiveClient
     public abstract class TaskView : BaseViewModel
     {
         private string tooltipHeader;
-        private string tasks;
-        private double percentage;
-        private int taskCount;
+        //private string tasks;
+        //private double percentage;
+        //private int taskCount;
 
         public string ToolTipHeader
         {
