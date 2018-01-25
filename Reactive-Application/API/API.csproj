@@ -153,8 +153,7 @@
     <Compile Include="API.cs" />
     <Compile Include="ColorConsole.cs" />
     <Compile Include="Actors\CoordinatorActor.cs" />
-    <Compile Include="Exceptions\JobCanceledException.cs" />
-    <Compile Include="Exceptions\UnHandledException.cs" />
+    <Compile Include="Exceptions\Exception.cs" />
     <Compile Include="ExternalSystems\ClientTaskExecuter.cs" />
     <Compile Include="ExternalSystems\ITaskExecuter.cs" />
     <Compile Include="Messages\AcknowledgementMessage.cs" />

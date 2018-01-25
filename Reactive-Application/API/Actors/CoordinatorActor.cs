@@ -33,13 +33,13 @@ namespace API.Actors
         {
              ColorConsole.WriteLineYellow("Coordinator {0} state is - Waiting.", Self.Path.Name);
 
-            // Received CanAcceptJobMessage from coordinator
+            // Received CanAcceptJobMessage from api
             Receive<CanAcceptJobMessage>(job =>
             {
-                Sender.Tell(new AbleToAcceptJobMessage(job.Description, job.ID));
+                Sender.Tell(new AbleToAcceptJobMessage(job.Description, job.ID, job.TimeOut));
             });
 
-            // Received BeginJobMessage from coordinator
+            // Received BeginJobMessage from api
             Receive<JobStartedMessage>(job =>
             {
                 ColorConsole.WriteLineGreen("Task {0} is processing by coordinator {1}.", job.ID,Self.Path.Name);
@@ -47,6 +47,7 @@ namespace API.Actors
                 BecomeWorking();
 
                 _parent = Sender;
+                
                 // ask the worker for job
                 _taskWorker.Tell(job);
             });
@@ -61,13 +62,13 @@ namespace API.Actors
         {
            // ColorConsole.WriteLineYellow("Cordinator {0}'s current state is Working", Self.Path.Name);
 
-            // Received CanAcceptJobMessage from commander
+            // Received CanAcceptJobMessage from api
             Receive<CanAcceptJobMessage>(job =>
             {               
                 ColorConsole.WriteLineYellow("Coordinator {0} state is - Working.", Self.Path.Name);
 
-                // send the response to commander
-                Sender.Tell(new UnableToAcceptJobMessage(job.Description, job.ID));
+                // send the response to api
+                Sender.Tell(new UnableToAcceptJobMessage(job.Description, job.ID, job.TimeOut));
             });
 
             // recieved JobCompletedMessage from worker
@@ -108,12 +109,18 @@ namespace API.Actors
         private void HandleJobFailed(JobFailedMessage job)
         {
             ColorConsole.WriteLineMagenta("Task {0} of Coordinator {1} failed.", job.ID, Self.Path.Name);
-
             // send response to parent - commander            
             _parent.Tell(job);
             // move to next state
             BecomeWaiting();
-        }
+
+            if (job.Status == JobStatus.Timeout)
+            {
+                //Context.Stop(_taskWorker);
+                 var shutdown = _taskWorker.GracefulStop(TimeSpan.FromMilliseconds(5));
+                InitializeWorker("worker_"+job.ID.ToString()+ "_"+job.TimeOut.ToString());
+            }
+        }       
 
         #endregion
 
@@ -131,27 +138,33 @@ namespace API.Actors
                         ColorConsole.WriteLineRed("TaskCanceledException caught for Coordinator {0}, Restarting the task...", Self.Path.Name);
                         return Directive.Restart;
                     }
-                    if (exception is UnHandledException)
+                    else if (exception is UnHandledException)
                     {
                         ColorConsole.WriteLineRed("Unhandled exception caught for Coordinator {0}, Resuming Task...", Self.Path.Name);
                         return Directive.Resume;
-                    }                    
+                    }   
+                    else if (exception is JobTimeOutException)
+                    {
+                        BecomeWaiting();                       
+                        ColorConsole.WriteLineRed("Task Time out exception caught for Coordinator {0}, Stopping Task...", Self.Path.Name);
+                        return Directive.Stop;
+                    }
 
                     ColorConsole.WriteLineRed("Unknown exception caught for Coordinator {0}, Restarting the task...", Self.Path.Name);
                     return Directive.Restart;
                 });
+        }
+        private void InitializeWorker(string workerName)
+        {
+            ITaskExecuter clientExecuter = new ClientTaskExecuter();
+            _taskWorker = Context.ActorOf(Props.Create<WorkerActor>(clientExecuter), workerName);
         }
 
         #region Lifecycle Hooks
         protected override void PreStart()
         {
            ColorConsole.WriteLineBlue("Cordinator{0}'s PreStart called.", Self.Path.Name);
-
-            //_taskWorker = Context.ActorOf(Context.DI().Props<WorkerActor>(),
-              //  ActorPaths.WorkerActor.Name);
-            
-            ITaskExecuter clientExecuter = new ClientTaskExecuter();
-            _taskWorker = Context.ActorOf(Props.Create<WorkerActor>(clientExecuter), "worker");
+           InitializeWorker("worker");         
         }
 
         protected override void PreRestart(Exception reason, object message)

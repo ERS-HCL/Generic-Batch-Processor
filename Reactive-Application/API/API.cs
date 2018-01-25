@@ -50,7 +50,7 @@ namespace API
                 _currentJob = job;
                 ColorConsole.WriteLineWhite($"Received Task {job.ID}.{job.Description} for processing.");
                 // ask the coordinator for job
-                _coordinator.Tell(new CanAcceptJobMessage(job.Description, job.ID));
+                _coordinator.Tell(new CanAcceptJobMessage(job.Description, job.ID, job.TimeOut));
 
                 // move to next state              
                 BecomeAsking();
@@ -109,7 +109,7 @@ namespace API
                 ColorConsole.WriteLineYellow($"Starting Job for Task ID: {job.ID}. {job.Description}");
                 // ask coordinator for processing message
 
-                var jobMessage = new JobStartedMessage(job.Description, job.ID);
+                var jobMessage = new JobStartedMessage(job.Description, job.ID, job.TimeOut);
                 Sender.Tell(jobMessage, Self);
 
                 // tell the client that job has been started

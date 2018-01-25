@@ -20,6 +20,12 @@ namespace API.Actors
         /// </summary>
         private JobStartedMessage _myJob;
 
+        /// <summary>
+        /// scheduler instance for checking timer
+        /// </summary>
+        private ICancelable _taskTimer;
+
+        private class TaskTimer { };
         #endregion
 
         /// <summary>
@@ -32,6 +38,19 @@ namespace API.Actors
 
             Receive<JobStartedMessage>(job => HandleJobExecute(job));
             Receive<AcknowledgementMessage>(message => HandleAcknowldgement(message));
+            Receive<TaskTimer>(x => CheckTaskTimer());
+        }
+
+        private void CheckTaskTimer()
+        {
+            if (null != _myJob)
+            {
+                if (DateTime.Now.Subtract(_myJob.ProcessedTime).TotalMinutes > _myJob.TimeOut)
+                {
+                    // throw new JobTimeOutException();
+                    Context.Parent.Tell(new JobFailedMessage(_myJob.Description, _myJob.ID, _myJob.TimeOut, JobStatus.Timeout));
+                }
+            }
         }
 
         #region Handle Receive Messages
@@ -40,10 +59,18 @@ namespace API.Actors
         /// </summary>
         /// <param name="job"></param>
         private void HandleJobExecute(JobStartedMessage job)
-        {
-            _myJob = job;
+        {            
+            _myJob = new JobStartedMessage(job.Description,job.ID, job.TimeOut);
+            ColorConsole.WriteLineCyan($"Task {job.ID}. { job.Description} is started with timeout {job.TimeOut.ToString()} minute.");
             // use pipeto to handle async call from caller ( taskexecuter )
             _taskExecuter.ExecuteTask(job).PipeTo(Self, Sender);
+
+            _taskTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+                         TimeSpan.FromMinutes(1), //initial delay in minutes
+                         TimeSpan.FromSeconds(10),// interval
+                         Self,
+                         new TaskTimer(),
+                         Self);
         }
 
         /// <summary>
@@ -52,23 +79,26 @@ namespace API.Actors
         /// <param name="message"></param>
         private void HandleAcknowldgement(AcknowledgementMessage message)
         {
+            if (null != _taskTimer)
+                _taskTimer.Cancel();
+
             if (message.Receipt == AcknowledgementReceipt.CANCELED)
             {
                  throw new JobCanceledException();
             }
             else if (message.Receipt == AcknowledgementReceipt.INVALID_TASK)
             {
-                Context.Parent.Tell(new JobFailedMessage(message.Description, message.ID, JobStatus.Failed));
+                Context.Parent.Tell(new JobFailedMessage(message.Description, message.ID,0, JobStatus.Failed));
                 ColorConsole.WriteLineRed($"Task {message.ID}. {message.Description} is invalid.");
             }
             else if (message.Receipt == AcknowledgementReceipt.FAILED)
             {
-                Context.Parent.Tell(new JobFailedMessage(message.Description, message.ID,JobStatus.Failed));
+                Context.Parent.Tell(new JobFailedMessage(message.Description, message.ID,0,JobStatus.Failed));
                 ColorConsole.WriteLineRed($"Task {message.ID}. { message.Description} is failed due to unhandled exeption.");
             }
             else if (message.Receipt == AcknowledgementReceipt.TIMEOUT)
             {
-                Context.Parent.Tell(new JobFailedMessage(message.Description, message.ID, JobStatus.Timeout));
+                Context.Parent.Tell(new JobFailedMessage(message.Description, message.ID, 0,JobStatus.Timeout));
                 ColorConsole.WriteLineRed("Task ID: {0} is cancelled due to time out error.", message.ID);
             }
             else
@@ -91,11 +121,20 @@ namespace API.Actors
         #region Lifecycle hooks
 
         protected override void PreStart()
-        {  
+        {
+            //_taskTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            //              TimeSpan.FromMinutes(1), //initial delay in minutes
+            //              TimeSpan.FromSeconds(10),// interval
+            //              Self,
+            //              new TaskTimer(),
+            //              Self);
         }
 
         protected override void PostStop()
         {
+            if (null != _taskTimer)
+                _taskTimer.Cancel();
+
             ColorConsole.WriteLineRed("WorkerActor for Coordinator {0} stopped.", Context.Parent.Path.Name);           
         }
 

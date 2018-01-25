@@ -7,39 +7,40 @@ namespace API.Messages
     {
         public string Description { get; private set; }
         public int ID { get; private set; }
-
+        public int TimeOut { get; private set; }
       //  public object ConsistentHashKey { get { return ID; } }
 
-        protected JobMessage(string taskFileName, int taskId)
+        protected JobMessage(string taskFileName, int taskId, int timeout = 0)
         {
             Description = taskFileName;
             ID = taskId;
+            TimeOut = timeout;
         }
     }
 
     public class CanAcceptJobMessage : JobMessage
     {
-        public CanAcceptJobMessage(string taskFileName, int taskId)
-            : base(taskFileName, taskId) { }
+        public CanAcceptJobMessage(string taskFileName, int taskId, int timeout)
+            : base(taskFileName, taskId, timeout) { }
     }
 
     public class AbleToAcceptJobMessage : JobMessage
     {
-        public AbleToAcceptJobMessage(string taskFileName, int taskId)
-            : base(taskFileName, taskId) { }
+        public AbleToAcceptJobMessage(string taskFileName, int taskId, int timeout)
+            : base(taskFileName, taskId, timeout) { }
     }
 
     public class UnableToAcceptJobMessage : JobMessage
     {
-        public UnableToAcceptJobMessage(string taskFileName, int taskId)
-            : base(taskFileName, taskId) { }
+        public UnableToAcceptJobMessage(string taskFileName, int taskId, int timeout)
+            : base(taskFileName, taskId, timeout) { }
     }
 
     public class JobStartedMessage : JobMessage
     {
         public DateTime ProcessedTime { get; private set; }
-        public JobStartedMessage(string taskFileName, int taskId)
-            : base(taskFileName, taskId)
+        public JobStartedMessage(string taskFileName, int taskId, int timeout)
+            : base(taskFileName, taskId, timeout)
         {
             ProcessedTime = DateTime.Now;
         }
@@ -48,8 +49,8 @@ namespace API.Messages
     public class JobFailedMessage : JobMessage
     {
         public JobStatus Status { get; private set; }
-        public JobFailedMessage(string taskFileName, int taskId, JobStatus reason)
-            : base(taskFileName, taskId)
+        public JobFailedMessage(string taskFileName, int taskId,int timeout, JobStatus reason)
+            : base(taskFileName, taskId, timeout)
         {
             Status = reason;
         }
@@ -71,23 +72,23 @@ namespace API.Messages
     public class ProcessJobMessage : JobMessage
     {
         public IActorRef Client { get; set; }
-        public ProcessJobMessage(string taskFileName, int taskId, IActorRef client=null)
-            : base(taskFileName, taskId) {
+        public ProcessJobMessage(string taskFileName, int taskId, int timeout, IActorRef client=null)
+            : base(taskFileName, taskId, timeout) {
             Client = client;
         }
     }
     
-    public class ProcessStashedJobsMessage : JobMessage
-    {
-        public ProcessStashedJobsMessage(string taskFileName, int taskId)
-            : base(taskFileName, taskId) { }
-    }
+    //public class ProcessStashedJobsMessage : JobMessage
+    //{
+    //    public ProcessStashedJobsMessage(string taskFileName, int taskId, int timeout)
+    //        : base(taskFileName, taskId, timeout) { }
+    //}
 
-    public class WorkerKilledMessage : JobMessage
-    {
-         public WorkerKilledMessage(string taskFileName, int taskId)
-            : base(taskFileName, taskId) { }
-    }
+    //public class WorkerKilledMessage : JobMessage
+    //{
+    //     public WorkerKilledMessage(string taskFileName, int taskId, int timeout)
+    //        : base(taskFileName, taskId, timeout) { }
+    //}
 
     public class ProcessFileMessage
     {
